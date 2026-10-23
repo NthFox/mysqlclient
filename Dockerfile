@@ -14,7 +14,7 @@ RUN sed -Ei \
         /etc/apt/sources.list.d/debian.sources \
     && apt-get update \
     && apt-get install --no-install-recommends -y \
-        build-essential pkg-config default-libmysqlclient-dev \
+        gcc libc6-dev pkg-config libmariadb-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src/mysqlclient
