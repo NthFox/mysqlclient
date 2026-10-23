@@ -1,0 +1,75 @@
+name: Build mysqlclient and push to ACR
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - pyproject.toml
+      - setup.py
+      - setup.cfg
+      - MANIFEST.in
+      - README.md
+      - LICENSE
+      - src/**
+      - .github/workflows/build-acr.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mysqlclient-acr-publish
+  cancel-in-progress: false
+
+env:
+  ACR_REGISTRY: registry.cn-hangzhou.aliyuncs.com
+  IMAGE: registry.cn-hangzhou.aliyuncs.com/maybefox/upstream-mysqlclient
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Check ACR credentials are configured
+        env:
+          ACR_USERNAME: ${{ secrets.ACR_USERNAME }}
+          ACR_PASSWORD: ${{ secrets.ACR_PASSWORD }}
+        run: |
+          : "${ACR_USERNAME:?Add the ACR_USERNAME repository secret}"
+          : "${ACR_PASSWORD:?Add the ACR_PASSWORD repository secret}"
+
+      - name: Log in to ACR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.ACR_REGISTRY }}
+          username: ${{ secrets.ACR_USERNAME }}
+          password: ${{ secrets.ACR_PASSWORD }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # The root Dockerfile compiles the wheel and tests import MySQLdb.
+      # Keep its existing base image, apt mirror and pip mirror unchanged.
+      - name: Build and push linux-amd64 image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=mysqlclient-amd64
+          cache-to: type=gha,mode=max,scope=mysqlclient-amd64
